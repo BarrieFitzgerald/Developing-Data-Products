@@ -1,0 +1,171 @@
+## setting the working directory
+setwd("C:/Users/bdfitzgerald/Desktop/data science competitions")
+
+###############
+## LIBRARIES ##
+###############
+
+## libraries utilized
+library(caret)
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+library(lsr)
+
+#################
+## DATA BASICS ##
+#################
+
+## import the data set
+set.seed(2015)
+train <- read.csv("./train.csv")
+intrain <- createDataPartition(train$Survived, p = 0.60, list = FALSE)
+train <- train[intrain,]
+crossvalid <- train[-intrain,]
+test <- read.csv("./test.csv")
+test$Survived <- NA
+test <- test[,c(1, 12, 2:11)]
+rm(intrain)
+
+#######################
+## CLEAN UP FUNCTION ##
+#######################
+
+## Functions to clean data
+cleanup <- function(x) {
+        data <- x
+        ## age bracket function
+        age.bracket <- function(x) {
+                train <- x
+                ## separating out the age data
+                age <- as.data.frame(train[, 6])
+                colnames(age) <- "ageraw"
+                ## Age Groups
+                age$age <- age$ageraw
+                age$age[is.na(age$ageraw) == TRUE] <- 999999        
+                age$agebrack <- "Teen"
+                age$agebrack[age$age < 11] <- "Child"
+                age$agebrack[age$age >= 20] <- "Adult"
+                age$agebrack[age$age >= 50] <- "Older Adult"
+                age$agebrack[age$age == 999999] <- "Unknown"
+                ## removing old age data
+                age <- age[, -1]
+                ## remaining data...nothing is done to it
+                data <- train[, -6]
+                ## combining the data back together
+                train <- cbind(data, age)
+        }
+        ## applying the age bracket function
+        data <- age.bracket(data)
+        ## Personal Title Function
+        titles <- function(x) {
+                train <- x
+                ## separating the names out
+                titles <- as.data.frame(train$Name)
+                colnames(titles) <- "names"
+                titles$names <- as.character(titles$names)
+                ## spliting names of indiviuals
+                ## separate function
+                separate <- function(x) {strsplit(x, split='[,.]')[[1]][2]}
+                titles$titles <- sapply(titles$names,
+                                        FUN = separate)
+                titles$titles <- sub(" ", "", titles$titles)
+                ## adjusting the names of the individuals
+                titles$titles[titles$titles %in% c('Mme', 'Mlle')] <- 'Mlle'
+                titles$titles[titles$titles %in% c('Capt', 'Don', 'Major', 'Sir')] <- 'Sir'
+                titles$titles[titles$titles %in% c('Dona', 'Lady', 'the Countess', 'Jonkheer')] <- 'Lady'
+                titles$titles[titles$titles %in% c('Mrs', 'Ms')] <- 'Mrs.Ms'
+                titles$titles <- factor(titles$titles)
+                ## remaining data...nothing is done with it
+                data <- train[,-4]
+                ## combining the data back together
+                train <- cbind(data, titles)
+        }
+        ## applying the titles function
+        data <- titles(data)
+        ## Age adjustment function based on titles
+        age.cleanup <- function(x) {
+                train2 <- x
+                data <- train2[, c(11, 14, 12)]
+                ## adjusting ages based on titles
+                data$agebrack.new <- data$agebrack
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Master"] <- "Child"
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Mr"] <- "Adult"
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Mrs"] <- "Adult"
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Miss"] <- "Adult"
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Ms"] <- "Adult"
+                data$agebrack.new[train2$age == 999999 &
+                                          train2$titles == "Mrs.Ms"] <- "Adult"
+                ## keeping only the new age brackets
+                data <- as.data.frame(data[, 4])
+                colnames(data) <- "agebrack"
+                ## remaining data...nothing done to it
+                train2 <- train2[, -12]
+                ## combine the data back together
+                train2 <- cbind(train2, data)
+        }
+        ## applying the age bracket clean up function
+        data <- age.cleanup(data)
+}
+
+######################################
+## APPLYING DATA CLEAN UP FUNCTIONS ##
+######################################
+
+## applying clean up function to data sets
+train2 <- cleanup(train)
+crossvalid2 <- cleanup(crossvalid)
+test2 <- cleanup(test)
+
+###################################
+## MAKING PREDICTION ON THE DATA ##
+###################################
+
+## building the model
+model <- rpart(formula = Survived ~ Sex + agebrack + Pclass + titles, 
+               data = train2, control=rpart.control(minsplit=2, cp=0), 
+               method = "class")
+## plotting the modelt
+fancyRpartPlot(model)
+prp(model)
+
+###################################
+## Cross Validation of the Model ##
+###################################
+
+## making predictions
+prediction <- predict(model, crossvalid2, type = "class")
+confusionMatrix(prediction, crossvalid$Survived)
+
+#######################
+## Balanced Accuracy ##
+#######################
+
+## Gender Model: .7627
+## Gender and Age Brackets: .7961
+## "" "" "" and Fare Brackets: .7961
+## Gender, Age Brackets, and Pclass full: .8034
+## Gender, Age Brackets, and Pclass cp .002: .7993
+## "" "" "" Pclass limited: .7993
+## Gender, Age Brackets Revised, and Pclass full: .8057
+## "" "" "" "" and titles: .8093
+
+#########################################
+## TEST DATA PREDICTION AND SUBMISSION ##
+#########################################
+
+## predict with the test data
+prediction <- predict(model, test2, type = "class")
+## submission
+submit <- data.frame(PassengerID = test2$PassengerId, 
+                     Survived = prediction)
+## exports the test variables out
+write.csv(submit, file = "decisiontreesubmit.csv", row.names = FALSE)
+
+#########################################
