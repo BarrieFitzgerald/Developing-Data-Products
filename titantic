@@ -1,0 +1,21 @@
+## setting the working directory
+setwd("C:/Users/bdfitzgerald/Desktop/data science competitions")
+
+## libraries utilized
+library(caret)
+library(rpart)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+library(lsr)
+
+## import the data set
+set.seed(2015)
+train <- read.csv("./train.csv")
+intrain <- createDataPartition(train$Survived, p = 0.60, list = FALSE)
+train <- train[intrain,]
+crossvalid <- train[-intrain,]
+test <- read.csv("./test.csv")
+test$Survived <- NA
+test <- test[,c(1, 12, 2:11)]
+rm(intrain)
